@@ -35,6 +35,8 @@ jobs:
           python scripts/deployhistory.py  # adjust path if needed
 
       - name: Commit generated JSON to gh-pages
+        with:
+          ref: gh-pages
         run: |
           git config user.email "bot@local"
           git config user.name "bot"
