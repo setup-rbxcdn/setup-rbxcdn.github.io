@@ -2,7 +2,7 @@ name: "Deploy DeployHistory"
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 * * * *"  # every 1 hour
   workflow_dispatch: {}
 
 permissions:
@@ -10,43 +10,46 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
-  fetch:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout gh-pages
-        uses: actions/checkout@v4
+      - name: Checkout main branch (for script)
+        uses: actions/checkout@v6
         with:
-          ref: gh-pages
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch DeployHistory
-        run: |
-          curl -s -H "Cache-Control: no-cache" https://setup.rbxcdn.com/DeployHistory.txt -o DeployHistory.txt
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-      - name: Commit & push if changed
+      - name: Run DeployHistory Parser
+        run: |
+          python scripts/deployhistory.py  # adjust path if needed
+
+      - name: Commit generated JSON to gh-pages
         run: |
           git config user.email "bot@local"
           git config user.name "bot"
 
-          git add DeployHistory.txt
+          git checkout gh-pages
+          cp -r version-history/* .   # copy generated files into root of gh-pages
+          git add .
           git diff --cached --quiet || (
-            git commit -m "Update DeployHistory"
+            git commit -m "Update version history"
             git push
           )
 
   deploy:
-    needs: fetch
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
     steps:
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: gh-pages
 
