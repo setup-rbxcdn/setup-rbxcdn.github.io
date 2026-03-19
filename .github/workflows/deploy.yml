@@ -33,7 +33,7 @@ jobs:
 
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
-        working-directory: main-repo
+        working-directory: main-repo/output
 
       - name: Checkout gh-pages branch
         uses: actions/checkout@v6
