@@ -1,4 +1,4 @@
-name: "Deploy DeployHistory"
+name: "Re-Deploy DeployHistory"
 
 on:
   schedule:
@@ -8,25 +8,16 @@ on:
 permissions:
   contents: write
   pages: write
-  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main branch
-        uses: actions/checkout@v6
+      # Checkout main, generate files
+      - uses: actions/checkout@v6
         with:
           ref: main
           path: main-repo
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.x"
-
-      - name: Install dependencies
-        run: pip install requests
 
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
@@ -49,25 +40,3 @@ jobs:
             git commit -m "Update version history"
             git push
           )
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-    steps:
-      - name: Checkout gh-pages
-        uses: actions/checkout@v6
-        with:
-          ref: gh-pages
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: "."
-
-      - name: Deploy to Pages
-        uses: actions/deploy-pages@v4
