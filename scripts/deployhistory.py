@@ -46,14 +46,17 @@ def normalize_version(v):
     return ".".join(parts)
 
 
-# --- Fetch and save DeployHistory files ---
+def version_key(v):
+    return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
+
+
 for platform, url in FILES.items():
     txt = fetch(url, True)
     if not txt:
         continue
     data.setdefault(platform, {})
 
-    # Save DeployHistory.txt in output folder
+    # Save original DeployHistory.txt
     path_txt = os.path.join(
         MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
     )
@@ -76,7 +79,7 @@ for platform, binaries in data.items():
             f"https://clientsettings.roblox.com/v2/client-version/{lookup}",
             f"https://clientsettings.roblox.com/v2/client-version/{lookup}/channel/zbeta",
         ]:
-            js = fetch(url)
+            js = fetch(url, as_text=False)
             if not js:
                 continue
             v = js.get("version")
@@ -85,18 +88,38 @@ for platform, binaries in data.items():
                 versions[v] = h
 
 
-# --- Sort and write ---
-def version_key(v):
-    return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
-
-
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
         path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w") as f:
             json.dump(
                 dict(sorted(versions.items(), key=lambda x: version_key(x[0]))),
                 f,
                 indent=2,
             )
+
+# --- Replace version-hidden in DeployHistory ---
+for platform, url in FILES.items():
+    path_txt = os.path.join(
+        MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
+    )
+
+    with open(path_txt, "r") as f:
+        lines = f.readlines()
+
+    updated_lines = []
+    for line in lines:
+        m = pattern.search(line)
+        if not m:
+            updated_lines.append(line)
+            continue
+        bt, version_hash, file_version_raw = m.groups()
+        v = normalize_version(file_version_raw)
+        replacement_hash = data[platform].get(bt).get(v)
+        if version_hash == "hidden" and replacement_hash:
+            line = line.replace("version-hidden", replacement_hash)
+        updated_lines.append(line)
+
+    with open(path_txt, "w") as f:
+        f.write("".join(updated_lines))

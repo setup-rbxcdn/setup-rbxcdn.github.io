@@ -40,7 +40,6 @@ jobs:
 
       - name: Copy generated files and commit
         run: |
-          find . -print
           cp -r main-repo/output/* gh-pages/
           cd gh-pages
           git config user.email "bot@local"
