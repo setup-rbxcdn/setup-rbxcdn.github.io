@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: main-repo       # clone main into separate folder
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -32,17 +32,21 @@ jobs:
 
       - name: Run DeployHistory Parser
         run: |
-          python scripts/deployhistory.py  # adjust path if needed
+          python main-repo/scripts/deployhistory.py
 
-      - name: Commit generated JSON to gh-pages
+      - name: Checkout gh-pages into another folder
+        uses: actions/checkout@v6
         with:
           ref: gh-pages
+          path: gh-pages        # clone gh-pages separately
+
+      - name: Copy generated files and commit
         run: |
           git config user.email "bot@local"
           git config user.name "bot"
 
-          git checkout gh-pages
-          cp -r version-history/* .   # copy generated files into root of gh-pages
+          cp -r main-repo/version-history/* gh-pages/
+          cd gh-pages
           git add .
           git diff --cached --quiet || (
             git commit -m "Update version history"
