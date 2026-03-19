@@ -14,8 +14,10 @@ FILES = {
 }
 
 pattern = re.compile(
-    r"New (\w+) version-([a-f0-9]+|hidden).*?file version:\s*([0-9,\s]+)", re.I
+    r"New (\w+) version-([a-f0-9]+|hidden).*?file ver(?:s)?ion:\s*([0-9,\s]+)",
+    re.I,
 )
+
 
 data = {}
 
@@ -54,23 +56,26 @@ for platform, url in FILES.items():
     txt = fetch(url, True)
     if not txt:
         continue
-    data.setdefault(platform, {})
+    plat_data = data.setdefault(platform, {})
 
-    # Save original DeployHistory.txt
     path_txt = os.path.join(
         MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
     )
     with open(path_txt, "w") as f:
         f.write(txt)
 
-    for line in txt.splitlines():
-        m = pattern.search(line)
-        if not m or m.group(2) == "hidden":
-            continue
-        bt, version_hash, file_version_raw = m.groups()
-        v = normalize_version(file_version_raw)
-        data[platform].setdefault(bt, {})[v] = f"version-{version_hash}"
+    setdefault = plat_data.setdefault
 
+    for m in pattern.finditer(txt):
+        h = m.group(2)
+        if h == "hidden":
+            continue
+
+        bt = m.group(1)
+        v = normalize_version(m.group(3))
+
+        bt_dict = setdefault(bt, {})
+        bt_dict[v] = "version-" + h
 # --- Enrich with clientsettings ---
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
