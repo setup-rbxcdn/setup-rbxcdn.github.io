@@ -1,6 +1,12 @@
 import re, json, os, requests
 
+# --- Paths ---
 OUTPUT_DIR = "version-history"
+MAC_DIR = "mac"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(MAC_DIR, exist_ok=True)
+
+# --- DeployHistory URLs ---
 FILES = {
     "Windows": "https://setup.rbxcdn.com/DeployHistory.txt",
     "Mac": "https://setup.rbxcdn.com/mac/DeployHistory.txt",
@@ -39,13 +45,21 @@ def normalize_version(v):
     return ".".join(parts)
 
 
-# --- Fetch and parse deploy histories ---
+# --- Fetch and save DeployHistory files ---
 for platform, url in FILES.items():
-    os.makedirs(os.path.join(OUTPUT_DIR, platform), exist_ok=True)
     txt = fetch(url, True)
     if not txt:
         continue
     data.setdefault(platform, {})
+
+    path_txt = "DeployHistory.txt"
+
+    if platform == "Mac":
+        path_txt = os.path.join(MAC_DIR, path_txt)
+
+    with open(path_txt, "w") as f:
+        f.write(txt)
+
     for line in txt.splitlines():
         m = pattern.search(line)
         if not m or m.group(2) == "hidden":
@@ -79,7 +93,8 @@ def version_key(v):
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
         path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
-        with open(path, "w") as f:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(
                 dict(sorted(versions.items(), key=lambda x: version_key(x[0]))),
                 f,
