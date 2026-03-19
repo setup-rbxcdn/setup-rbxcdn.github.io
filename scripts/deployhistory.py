@@ -1,8 +1,9 @@
 import re, json, os, requests
 
 # --- Paths ---
-OUTPUT_DIR = "version-history"
-MAC_DIR = "mac"
+BASE_DIR = "output"
+OUTPUT_DIR = os.path.join(BASE_DIR, "version-history")
+MAC_DIR = os.path.join(BASE_DIR, "mac")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(MAC_DIR, exist_ok=True)
 
@@ -52,11 +53,10 @@ for platform, url in FILES.items():
         continue
     data.setdefault(platform, {})
 
-    path_txt = "DeployHistory.txt"
-
-    if platform == "Mac":
-        path_txt = os.path.join(MAC_DIR, path_txt)
-
+    # Save DeployHistory.txt in output folder
+    path_txt = os.path.join(
+        MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
+    )
     with open(path_txt, "w") as f:
         f.write(txt)
 
