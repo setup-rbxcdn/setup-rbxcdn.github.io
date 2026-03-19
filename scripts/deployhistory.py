@@ -79,7 +79,7 @@ for platform, binaries in data.items():
             f"https://clientsettings.roblox.com/v2/client-version/{lookup}",
             f"https://clientsettings.roblox.com/v2/client-version/{lookup}/channel/zbeta",
         ]:
-            js = fetch(url, as_text=False)
+            js = fetch(url)
             if not js:
                 continue
             v = js.get("version")
