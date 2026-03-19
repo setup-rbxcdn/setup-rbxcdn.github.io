@@ -118,7 +118,7 @@ for platform, url in FILES.items():
         v = normalize_version(file_version_raw)
         replacement_hash = data[platform].get(bt).get(v)
         if version_hash == "hidden" and replacement_hash:
-            line = line.replace("version-hidden", replacement_hash + " ")
+            line = line.replace("version-hidden", replacement_hash)
         updated_lines.append(line)
 
     with open(path_txt, "w") as f:
