@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: main
-          path: main-repo       # clone main into separate folder
+          path: main-repo
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -34,19 +34,20 @@ jobs:
         run: |
           python main-repo/scripts/deployhistory.py
 
-      - name: Checkout gh-pages into another folder
+      - name: Checkout gh-pages branch
         uses: actions/checkout@v6
         with:
           ref: gh-pages
-          path: gh-pages        # clone gh-pages separately
+          path: gh-pages
 
       - name: Copy generated files and commit
         run: |
+          cd gh-pages
+
           git config user.email "bot@local"
           git config user.name "bot"
 
           cp -r main-repo/version-history/* gh-pages/
-          cd gh-pages
           git add .
           git diff --cached --quiet || (
             git commit -m "Update version history"
