@@ -31,9 +31,8 @@ jobs:
           pip install requests
 
       - name: Run DeployHistory Parser
-        run: |
-          cd main-repo
-          python main-repo/scripts/deployhistory.py
+        run: python scripts/deployhistory.py
+        working-directory: main-repo
 
       - name: Checkout gh-pages branch
         uses: actions/checkout@v6
