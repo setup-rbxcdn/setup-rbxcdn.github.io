@@ -1,8 +1,6 @@
 import re, json, os, requests
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "version-history")
-
+OUTPUT_DIR = "version-history"
 FILES = {
     "Windows": "https://setup.rbxcdn.com/DeployHistory.txt",
     "Mac": "https://setup.rbxcdn.com/mac/DeployHistory.txt",

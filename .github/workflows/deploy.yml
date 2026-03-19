@@ -32,6 +32,7 @@ jobs:
 
       - name: Run DeployHistory Parser
         run: |
+          cd main-repo
           python main-repo/scripts/deployhistory.py
 
       - name: Checkout gh-pages branch
