@@ -7,32 +7,22 @@ on:
 
 permissions:
   contents: write
-  pages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       # Checkout main, generate files
       - uses: actions/checkout@v6
         with:
           ref: main
-          path: main-repo
 
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
-        working-directory: main-repo
 
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v6
-        with:
-          ref: gh-pages
-          path: gh-pages
-
-      - name: Copy generated files and commit
+      - name: Commit changes
         run: |
-          cp -r main-repo/output/* gh-pages/
-          cd gh-pages
           git config user.email "bot@local"
           git config user.name "bot"
           git add .

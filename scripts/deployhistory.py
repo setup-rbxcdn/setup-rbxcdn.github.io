@@ -1,7 +1,7 @@
 import re, json, os, requests
 
 # --- Paths ---
-BASE_DIR = "output"
+BASE_DIR = ""
 OUTPUT_DIR = os.path.join(BASE_DIR, "version-history")
 MAC_DIR = os.path.join(BASE_DIR, "mac")
 
