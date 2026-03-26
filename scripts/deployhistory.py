@@ -50,6 +50,31 @@ def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
 
 
+# --- PRELOAD EXISTING JSON (CRITICAL: prevents deletions) ---
+for platform in FILES.keys():
+    plat_dir = os.path.join(OUTPUT_DIR, platform)
+    if not os.path.exists(plat_dir):
+        continue
+
+    plat_data = data.setdefault(platform, {})
+
+    for file in os.listdir(plat_dir):
+        if not file.endswith(".json"):
+            continue
+
+        bt = file[:-5]
+        path = os.path.join(plat_dir, file)
+
+        try:
+            with open(path, "r") as f:
+                existing = json.load(f)
+        except:
+            continue
+
+        bt_dict = plat_data.setdefault(bt, {})
+        bt_dict.update(existing)
+
+
 # --- Resolver builder (lazy) ---
 def get_resolver(platform, bt):
     key = (platform, bt)
@@ -58,14 +83,9 @@ def get_resolver(platform, bt):
 
     resolver = {}
 
-    # 1. Load GH-pages JSON (historical)
-    path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
-    if os.path.exists(path):
-        try:
-            with open(path, "r") as f:
-                resolver.update(json.load(f))
-        except:
-            pass
+    # 1. Load from preloaded JSON (persistent memory)
+    existing_bt = data.get(platform, {}).get(bt, {})
+    resolver.update(existing_bt)
 
     # 2. Fetch clientsettings (latest)
     lookup = normalize_binary(bt, platform)
@@ -80,7 +100,7 @@ def get_resolver(platform, bt):
         v = js.get("version")
         h = js.get("clientVersionUpload")
         if v and h:
-            resolver[v] = h
+            resolver[v] = h if h.startswith("version-") else "version-" + h
 
     resolver_cache[key] = resolver
     return resolver
@@ -107,40 +127,48 @@ for platform, url in FILES.items():
         bt_dict = plat_data.setdefault(bt, {})
         resolver = get_resolver(platform, bt)
 
-        # --- Resolve hidden inline ---
+        existing_hash = resolver.get(v) or bt_dict.get(v)
+
+        # --- Resolve hidden safely (NO REGRESSION) ---
         if h == "hidden":
-            resolved = resolver.get(v)
-            if resolved:
-                line = line.replace("version-hidden", resolved)
-                h = resolved.replace("version-", "")
+            if existing_hash:
+                line = line.replace("version-hidden", existing_hash)
+                h = existing_hash.replace("version-", "")
 
-        # --- Store if known ---
+        # --- Store safely (append-only) ---
         if h != "hidden":
-            full_hash = "version-" + h
-            bt_dict[v] = full_hash
+            full_hash = h if h.startswith("version-") else "version-" + h
 
-            # update resolver dynamically (important)
-            resolver[v] = full_hash
+            # only add if new OR same (never overwrite different)
+            if v not in bt_dict or bt_dict[v] == full_hash:
+                bt_dict[v] = full_hash
+                resolver[v] = full_hash
 
         output_lines.append(line)
 
-    # write DeployHistory (already resolved)
+    # --- Write DeployHistory ---
     path_txt = os.path.join(
         MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
     )
-    with open(path_txt, "w") as f:
+    with open(path_txt, "w", encoding="utf-8") as f:
         f.write("".join(output_lines))
 
 
-# --- Write JSON output ---
+# --- Write JSON output (stable + append-only) ---
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
         path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        with open(path, "w") as f:
+        sorted_versions = dict(
+            sorted(versions.items(), key=lambda x: version_key(x[0]))
+        )
+
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(
-                dict(sorted(versions.items(), key=lambda x: version_key(x[0]))),
+                sorted_versions,
                 f,
                 indent=2,
+                separators=(",", ": "),
+                ensure_ascii=False,
             )
