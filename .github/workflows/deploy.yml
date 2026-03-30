@@ -1,4 +1,4 @@
-name: "Re-Deploy DeployHistory"
+name: "Re-deploy DeployHistory"
 
 on:
   schedule:
