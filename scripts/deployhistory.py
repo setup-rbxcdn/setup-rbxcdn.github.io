@@ -3,9 +3,11 @@ import re, json, os, requests
 # --- Paths ---
 BASE_DIR = ""
 OUTPUT_DIR = os.path.join(BASE_DIR, "version-history")
+INVERTED_DIR = os.path.join(BASE_DIR, "version-history-inverted")
 MAC_DIR = os.path.join(BASE_DIR, "mac")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(INVERTED_DIR, exist_ok=True)
 os.makedirs(MAC_DIR, exist_ok=True)
 
 FILES = {
@@ -18,8 +20,15 @@ pattern = re.compile(
     re.I,
 )
 
-data = {}
-resolver_cache = {}  # (platform, bt) -> {version: hash}
+# --- Data stores ---
+data = {}  # version -> hash
+inverted_data = {}  # hash -> version
+resolver_cache = {}  # (platform, bt) -> hash->version (includes clientsettings)
+
+
+# --- Slot rules ---
+def get_slot_limit(bt):
+    return 2 if bt in ("WindowsPlayer", "Studio64") else 1  # 2 because Luobu
 
 
 # --- Utils ---
@@ -50,29 +59,49 @@ def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
 
 
-# --- PRELOAD EXISTING JSON (CRITICAL: prevents deletions) ---
+# --- PRELOAD (INVERTED FIRST) ---
 for platform in FILES.keys():
-    plat_dir = os.path.join(OUTPUT_DIR, platform)
-    if not os.path.exists(plat_dir):
-        continue
-
     plat_data = data.setdefault(platform, {})
+    inv_plat_data = inverted_data.setdefault(platform, {})
 
-    for file in os.listdir(plat_dir):
-        if not file.endswith(".json"):
-            continue
+    inv_dir = os.path.join(INVERTED_DIR, platform)
+    if os.path.exists(inv_dir):
+        # load existing inverted JSON
+        for file in os.listdir(inv_dir):
+            if not file.endswith(".json"):
+                continue
+            bt = file[:-5]
+            path = os.path.join(inv_dir, file)
+            try:
+                with open(path, "r") as f:
+                    inv_bt = json.load(f)
+            except:
+                continue
+            inv_plat_data.setdefault(bt, {}).update(inv_bt)
+    else:
+        # fallback: load from normal version history
+        hist_dir = os.path.join(OUTPUT_DIR, platform)
+        if os.path.exists(hist_dir):
+            for file in os.listdir(hist_dir):
+                if not file.endswith(".json"):
+                    continue
+                bt = file[:-5]
+                path = os.path.join(hist_dir, file)
+                try:
+                    with open(path, "r") as f:
+                        normal_versions = json.load(f)
+                except:
+                    continue
+                inv_bt = inv_plat_data.setdefault(bt, {})
+                # invert normal -> inverted
+                for v, h in normal_versions.items():
+                    inv_bt[h] = v
 
-        bt = file[:-5]
-        path = os.path.join(plat_dir, file)
-
-        try:
-            with open(path, "r") as f:
-                existing = json.load(f)
-        except:
-            continue
-
+    # rebuild normal map (best-effort)
+    for bt, hashes in inv_plat_data.items():
         bt_dict = plat_data.setdefault(bt, {})
-        bt_dict.update(existing)
+        for h, v in hashes.items():
+            bt_dict[v] = h  # always overwrite
 
 
 # --- Resolver builder (lazy) ---
@@ -81,11 +110,8 @@ def get_resolver(platform, bt):
     if key in resolver_cache:
         return resolver_cache[key]
 
-    resolver = {}
-
-    # 1. Load from preloaded JSON (persistent memory)
-    existing_bt = data.get(platform, {}).get(bt, {})
-    resolver.update(existing_bt)
+    inv_bt_dict = inverted_data.get(platform, {}).get(bt, {})
+    inv_resolver = dict(inv_bt_dict)
 
     # 2. Fetch clientsettings (latest)
     lookup = normalize_binary(bt, platform)
@@ -96,14 +122,17 @@ def get_resolver(platform, bt):
         js = fetch(url)
         if not js:
             continue
-
+        print(url, js)
         v = js.get("version")
         h = js.get("clientVersionUpload")
         if v and h:
-            resolver[v] = h if h.startswith("version-") else "version-" + h
+            full_hash = h if h.startswith("version-") else "version-" + h
+            inv_resolver[full_hash] = v
+            # Also immediately persist to inverted_data
+            inv_bt_dict[full_hash] = v
 
-    resolver_cache[key] = resolver
-    return resolver
+    resolver_cache[key] = inv_resolver
+    return inv_resolver
 
 
 # --- MAIN ---
@@ -112,49 +141,60 @@ for platform, url in FILES.items():
     if not txt:
         continue
 
-    plat_data = data.setdefault(platform, {})
+    inv_plat_data = inverted_data.setdefault(platform, {})
+
+    lines = txt.split("\n")
     output_lines = []
 
-    for line in txt.splitlines(True):
+    # Track usage per hash for hidden slots
+    usage = {}
+
+    for i, line in enumerate(lines):
         m = pattern.search(line)
         if not m:
-            output_lines.append(line)
+            output_lines.append(line.rstrip("\n"))
             continue
 
         bt, h, raw_v = m.groups()
         v = normalize_version(raw_v)
 
-        bt_dict = plat_data.setdefault(bt, {})
-        resolver = get_resolver(platform, bt)
+        inv_bt_dict = inv_plat_data.setdefault(bt, {})
+        inv_resolver = get_resolver(platform, bt)
 
-        existing_hash = resolver.get(v) or bt_dict.get(v)
-
-        # --- Resolve hidden safely (NO REGRESSION) ---
-        if h == "hidden":
-            if existing_hash:
-                line = line.replace("version-hidden", existing_hash)
-                h = existing_hash.replace("version-", "")
-
-        # --- Store safely (append-only) ---
+        # --- Store explicit hashes ---
         if h != "hidden":
             full_hash = h if h.startswith("version-") else "version-" + h
+            inv_bt_dict[full_hash] = v
+            inv_resolver[full_hash] = v
 
-            # only add if new OR same (never overwrite different)
-            if v not in bt_dict or bt_dict[v] == full_hash:
-                bt_dict[v] = full_hash
-                resolver[v] = full_hash
+        # --- Resolve hidden ---
+        if h == "hidden":
+            candidates = [hash_ for hash_, ver in inv_resolver.items() if ver == v]
 
-        output_lines.append(line)
+            # Persist all discovered candidates, even if not used
+            for hash_ in candidates:
+                inv_bt_dict[hash_] = v
 
-    # --- Write DeployHistory ---
+            limit = get_slot_limit(bt)
+            for hash_ in candidates:
+                key = (bt, v, hash_)
+                used = usage.get(key, 0)
+                if used < limit:
+                    line = line.replace("version-hidden", hash_)
+                    usage[key] = used + 1
+                    break
+
+        output_lines.append(line.rstrip("\n"))
+
+    # --- Write DeployHistory.txt ---
     path_txt = os.path.join(
         MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
     )
-    with open(path_txt, "w", encoding="utf-8") as f:
-        f.write("".join(output_lines))
+    with open(path_txt, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(output_lines))
 
 
-# --- Write JSON output (stable + append-only) ---
+# --- Write NORMAL JSON (version -> hash) ---
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
         path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
@@ -167,6 +207,36 @@ for platform, binaries in data.items():
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
                 sorted_versions,
+                f,
+                indent=2,
+                separators=(",", ": "),
+                ensure_ascii=False,
+            )
+
+
+# --- Write INVERTED JSON (hash -> version, ORDERED by version) ---
+for platform, binaries in inverted_data.items():
+    for bt, hashes in binaries.items():
+        path = os.path.join(INVERTED_DIR, platform, f"{bt}.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        # --- group by version ---
+        grouped = {}
+        for h, v in hashes.items():
+            grouped.setdefault(v, []).append(h)
+
+        # --- sort versions ---
+        sorted_versions = sorted(grouped.keys(), key=version_key)
+
+        # --- rebuild ordered dict ---
+        ordered = {}
+        for v in sorted_versions:
+            for h in grouped[v]:  # preserve insertion order
+                ordered[h] = v
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(
+                ordered,
                 f,
                 indent=2,
                 separators=(",", ": "),
