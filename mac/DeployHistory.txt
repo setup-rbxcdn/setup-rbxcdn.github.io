@@ -4988,6 +4988,6 @@ New Client version-hidden at 4/1/2026 6:03:27 PM, file version: 0,715,0,7151115,
 
 New Studio version-af87dd9eb0504328 at 4/1/2026 6:06:00 PM, file version: 0, 715, 0, 7151115, git hash: 0.715.0.7151115 ...Done!
 
-New Studio version-hidden at 4/3/2026 5:56:54 PM, file version: 0, 715, 1, 7151119, git hash: 0.715.1.7151119 ...Done!
+New Studio version-20084c8229e44fcb at 4/3/2026 5:56:54 PM, file version: 0, 715, 1, 7151119, git hash: 0.715.1.7151119 ...Done!
 
-New Studio version-hidden at 4/3/2026 6:09:16 PM, file version: 0, 715, 1, 7151119, git hash: 0.715.1.7151119 ...Done!
+New Studio version-20084c8229e44fcb at 4/3/2026 6:09:16 PM, file version: 0, 715, 1, 7151119, git hash: 0.715.1.7151119 ...Done!
