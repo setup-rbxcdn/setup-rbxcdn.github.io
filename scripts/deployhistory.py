@@ -21,9 +21,8 @@ pattern = re.compile(
 )
 
 # --- Data stores ---
-data = {}  # version -> hash
-inverted_data = {}  # hash -> version
-resolver_cache = {}  # (platform, bt) -> hash->version (includes clientsettings)
+inverted_data = {}  # hash -> version (SOURCE OF TRUTH)
+resolver_cache = {}  # (platform, bt) -> hash->version
 
 
 # --- Slot rules ---
@@ -59,9 +58,8 @@ def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
 
 
-# --- PRELOAD (INVERTED FIRST) ---
+# --- PRELOAD (ONLY INVERTED) ---
 for platform in FILES.keys():
-    plat_data = data.setdefault(platform, {})
     inv_plat_data = inverted_data.setdefault(platform, {})
 
     inv_dir = os.path.join(INVERTED_DIR, platform)
@@ -79,7 +77,7 @@ for platform in FILES.keys():
                 continue
             inv_plat_data.setdefault(bt, {}).update(inv_bt)
     else:
-        # fallback: load from normal version history
+        # fallback from normal
         hist_dir = os.path.join(OUTPUT_DIR, platform)
         if os.path.exists(hist_dir):
             for file in os.listdir(hist_dir):
@@ -92,19 +90,13 @@ for platform in FILES.keys():
                         normal_versions = json.load(f)
                 except:
                     continue
+
                 inv_bt = inv_plat_data.setdefault(bt, {})
-                # invert normal -> inverted
                 for v, h in normal_versions.items():
                     inv_bt[h] = v
 
-    # rebuild normal map (best-effort)
-    for bt, hashes in inv_plat_data.items():
-        bt_dict = plat_data.setdefault(bt, {})
-        for h, v in hashes.items():
-            bt_dict[v] = h  # always overwrite
 
-
-# --- Resolver builder (lazy) ---
+# --- Resolver builder ---
 def get_resolver(platform, bt):
     key = (platform, bt)
     if key in resolver_cache:
@@ -113,7 +105,6 @@ def get_resolver(platform, bt):
     inv_bt_dict = inverted_data.get(platform, {}).get(bt, {})
     inv_resolver = dict(inv_bt_dict)
 
-    # 2. Fetch clientsettings (latest)
     lookup = normalize_binary(bt, platform)
     for url in [
         f"https://clientsettings.roblox.com/v2/client-version/{lookup}",
@@ -128,8 +119,7 @@ def get_resolver(platform, bt):
         if v and h:
             full_hash = h if h.startswith("version-") else "version-" + h
             inv_resolver[full_hash] = v
-            # Also immediately persist to inverted_data
-            inv_bt_dict[full_hash] = v
+            inv_bt_dict[full_hash] = v  # persist immediately
 
     resolver_cache[key] = inv_resolver
     return inv_resolver
@@ -149,7 +139,7 @@ for platform, url in FILES.items():
     # Track usage per hash for hidden slots
     usage = {}
 
-    for i, line in enumerate(lines):
+    for line in lines:
         m = pattern.search(line)
         if not m:
             output_lines.append(line.rstrip("\n"))
@@ -161,13 +151,13 @@ for platform, url in FILES.items():
         inv_bt_dict = inv_plat_data.setdefault(bt, {})
         inv_resolver = get_resolver(platform, bt)
 
-        # --- Store explicit hashes ---
+        # --- explicit hash ---
         if h != "hidden":
             full_hash = h if h.startswith("version-") else "version-" + h
             inv_bt_dict[full_hash] = v
             inv_resolver[full_hash] = v
 
-        # --- Resolve hidden ---
+        # --- hidden resolution ---
         if h == "hidden":
             candidates = [hash_ for hash_, ver in inv_resolver.items() if ver == v]
 
@@ -194,7 +184,15 @@ for platform, url in FILES.items():
         f.write("\n".join(output_lines))
 
 
-# --- Write NORMAL JSON (version -> hash) ---
+data = {}
+
+for platform, binaries in inverted_data.items():
+    for bt, hashes in binaries.items():
+        for h, v in hashes.items():
+            data.setdefault(platform, {}).setdefault(bt, {})[v] = h
+
+
+# --- Write NORMAL JSON ---
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
         path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
@@ -214,7 +212,7 @@ for platform, binaries in data.items():
             )
 
 
-# --- Write INVERTED JSON (hash -> version, ORDERED by version) ---
+# --- Write INVERTED JSON ---
 for platform, binaries in inverted_data.items():
     for bt, hashes in binaries.items():
         path = os.path.join(INVERTED_DIR, platform, f"{bt}.json")
