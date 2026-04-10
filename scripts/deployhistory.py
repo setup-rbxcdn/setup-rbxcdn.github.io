@@ -1,24 +1,40 @@
 import re, json, os, requests
 
-# --- Paths ---
+# --- CONFIG ---
+
 BASE_DIR = ""
-OUTPUT_DIR = os.path.join(BASE_DIR, "version-history")
-INVERTED_DIR = os.path.join(BASE_DIR, "version-history-inverted")
-MAC_DIR = os.path.join(BASE_DIR, "mac")
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(INVERTED_DIR, exist_ok=True)
-os.makedirs(MAC_DIR, exist_ok=True)
+# Paths
+PATHS = {
+    "output": os.path.join(BASE_DIR, "version-history"),
+    "inverted": os.path.join(BASE_DIR, "version-history-inverted"),
+    "mac": os.path.join(BASE_DIR, "mac"),
+}
 
-FILES = {
+# Deploy history endpoints
+DEPLOY_HISTORY_URLS = {
     "Windows": "https://setup.rbxcdn.com/DeployHistory.txt",
     "Mac": "https://setup.rbxcdn.com/mac/DeployHistory.txt",
 }
 
-pattern = re.compile(
+# ClientSettings endpoints
+CLIENTSETTINGS_BASE = "https://clientsettingscdn.roblox.com/v2/client-version"
+
+CLIENT_CHANNELS = [
+    "",  # default
+    "/channel/zbeta",
+    "/channel/zliveforbeta",
+]
+
+# Regex
+DEPLOY_PATTERN = re.compile(
     r"New (\w+) version-([a-f0-9]+|hidden).*?file ver(?:s)?ion:\s*([0-9,\s]+)",
     re.I,
 )
+
+# --- Ensure dirs exist ---
+for path in PATHS.values():
+    os.makedirs(path, exist_ok=True)
 
 # --- Data stores ---
 inverted_data = {}  # hash -> version (SOURCE OF TRUTH)
@@ -58,13 +74,12 @@ def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
 
 
-# --- PRELOAD (ONLY INVERTED) ---
-for platform in FILES.keys():
+# --- PRELOAD ---
+for platform in DEPLOY_HISTORY_URLS.keys():
     inv_plat_data = inverted_data.setdefault(platform, {})
 
-    inv_dir = os.path.join(INVERTED_DIR, platform)
+    inv_dir = os.path.join(PATHS["inverted"], platform)
     if os.path.exists(inv_dir):
-        # load existing inverted JSON
         for file in os.listdir(inv_dir):
             if not file.endswith(".json"):
                 continue
@@ -77,8 +92,7 @@ for platform in FILES.keys():
                 continue
             inv_plat_data.setdefault(bt, {}).update(inv_bt)
     else:
-        # fallback from normal
-        hist_dir = os.path.join(OUTPUT_DIR, platform)
+        hist_dir = os.path.join(PATHS["output"], platform)
         if os.path.exists(hist_dir):
             for file in os.listdir(hist_dir):
                 if not file.endswith(".json"):
@@ -96,7 +110,7 @@ for platform in FILES.keys():
                     inv_bt[h] = v
 
 
-# --- Resolver builder ---
+# --- Resolver ---
 def get_resolver(platform, bt):
     key = (platform, bt)
     if key in resolver_cache:
@@ -106,27 +120,29 @@ def get_resolver(platform, bt):
     inv_resolver = dict(inv_bt_dict)
 
     lookup = normalize_binary(bt, platform)
-    for url in [
-        f"https://clientsettings.roblox.com/v2/client-version/{lookup}",
-        f"https://clientsettings.roblox.com/v2/client-version/{lookup}/channel/zbeta",
-    ]:
+
+    for suffix in CLIENT_CHANNELS:
+        url = f"{CLIENTSETTINGS_BASE}/{lookup}{suffix}"
         js = fetch(url)
         if not js:
             continue
+
         print(url, js)
+
         v = js.get("version")
         h = js.get("clientVersionUpload")
+
         if v and h:
             full_hash = h if h.startswith("version-") else "version-" + h
             inv_resolver[full_hash] = v
-            inv_bt_dict[full_hash] = v  # persist immediately
+            inv_bt_dict[full_hash] = v
 
     resolver_cache[key] = inv_resolver
     return inv_resolver
 
 
 # --- MAIN ---
-for platform, url in FILES.items():
+for platform, url in DEPLOY_HISTORY_URLS.items():
     txt = fetch(url, True)
     if not txt:
         continue
@@ -140,7 +156,7 @@ for platform, url in FILES.items():
     usage = {}
 
     for line in lines:
-        m = pattern.search(line)
+        m = DEPLOY_PATTERN.search(line)
         if not m:
             output_lines.append(line.rstrip("\n"))
             continue
@@ -151,17 +167,16 @@ for platform, url in FILES.items():
         inv_bt_dict = inv_plat_data.setdefault(bt, {})
         inv_resolver = get_resolver(platform, bt)
 
-        # --- explicit hash ---
+        # explicit hash
         if h != "hidden":
             full_hash = h if h.startswith("version-") else "version-" + h
             inv_bt_dict[full_hash] = v
             inv_resolver[full_hash] = v
 
-        # --- hidden resolution ---
+        # hidden resolution
         if h == "hidden":
             candidates = [hash_ for hash_, ver in inv_resolver.items() if ver == v]
 
-            # Persist all discovered candidates, even if not used
             for hash_ in candidates:
                 inv_bt_dict[hash_] = v
 
@@ -176,14 +191,15 @@ for platform, url in FILES.items():
 
         output_lines.append(line.rstrip("\n"))
 
-    # --- Write DeployHistory.txt ---
+    # write DeployHistory.txt
     path_txt = os.path.join(
-        MAC_DIR if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
+        PATHS["mac"] if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
     )
+
     with open(path_txt, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(output_lines))
 
-
+# --- Build normal data ---
 data = {}
 
 for platform, binaries in inverted_data.items():
@@ -191,11 +207,10 @@ for platform, binaries in inverted_data.items():
         for h, v in hashes.items():
             data.setdefault(platform, {}).setdefault(bt, {})[v] = h
 
-
 # --- Write NORMAL JSON ---
 for platform, binaries in data.items():
     for bt, versions in binaries.items():
-        path = os.path.join(OUTPUT_DIR, platform, f"{bt}.json")
+        path = os.path.join(PATHS["output"], platform, f"{bt}.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
         sorted_versions = dict(
@@ -204,39 +219,25 @@ for platform, binaries in data.items():
 
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
-                sorted_versions,
-                f,
-                indent=2,
-                separators=(",", ": "),
-                ensure_ascii=False,
+                sorted_versions, f, indent=2, separators=(",", ": "), ensure_ascii=False
             )
-
 
 # --- Write INVERTED JSON ---
 for platform, binaries in inverted_data.items():
     for bt, hashes in binaries.items():
-        path = os.path.join(INVERTED_DIR, platform, f"{bt}.json")
+        path = os.path.join(PATHS["inverted"], platform, f"{bt}.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # --- group by version ---
         grouped = {}
         for h, v in hashes.items():
             grouped.setdefault(v, []).append(h)
 
-        # --- sort versions ---
         sorted_versions = sorted(grouped.keys(), key=version_key)
 
-        # --- rebuild ordered dict ---
         ordered = {}
         for v in sorted_versions:
-            for h in grouped[v]:  # preserve insertion order
+            for h in grouped[v]:
                 ordered[h] = v
 
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(
-                ordered,
-                f,
-                indent=2,
-                separators=(",", ": "),
-                ensure_ascii=False,
-            )
+            json.dump(ordered, f, indent=2, separators=(",", ": "), ensure_ascii=False)
