@@ -32,6 +32,9 @@ DEPLOY_PATTERN = re.compile(
     re.I,
 )
 
+RECENT_VERSION_WINDOW = 10
+
+
 # --- Ensure dirs exist ---
 for path in PATHS.values():
     os.makedirs(path, exist_ok=True)
@@ -72,6 +75,30 @@ def normalize_version(v):
 
 def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
+
+
+def get_major(v):
+    try:
+        return int(v.split(".")[1])
+    except:
+        return 0
+
+
+def get_global_latest_major(platform):
+    plat = inverted_data.get(platform, {})
+    majors = []
+
+    for bt_dict in plat.values():
+        for v in bt_dict.values():
+            majors.append(get_major(v))
+
+    return max(majors) if majors else 0
+
+
+def get_bt_latest_major(inv_bt_dict):
+    if not inv_bt_dict:
+        return 0
+    return max(get_major(v) for v in inv_bt_dict.values())
 
 
 # --- PRELOAD ---
@@ -119,6 +146,13 @@ def get_resolver(platform, bt):
     inv_bt_dict = inverted_data.get(platform, {}).get(bt, {})
     inv_resolver = dict(inv_bt_dict)
 
+    global_latest = get_global_latest_major(platform)
+    bt_latest = get_bt_latest_major(inv_bt_dict)
+
+    if bt_latest < (global_latest - RECENT_VERSION_WINDOW):
+        resolver_cache[key] = inv_resolver
+        return inv_resolver
+
     lookup = normalize_binary(bt, platform)
 
     for suffix in CLIENT_CHANNELS:
@@ -127,7 +161,7 @@ def get_resolver(platform, bt):
         if not js:
             continue
 
-        print(url, js)
+        print(js, lookup, suffix)
 
         v = js.get("version")
         h = js.get("clientVersionUpload")
@@ -167,13 +201,11 @@ for platform, url in DEPLOY_HISTORY_URLS.items():
         inv_bt_dict = inv_plat_data.setdefault(bt, {})
         inv_resolver = get_resolver(platform, bt)
 
-        # explicit hash
         if h != "hidden":
             full_hash = h if h.startswith("version-") else "version-" + h
             inv_bt_dict[full_hash] = v
             inv_resolver[full_hash] = v
 
-        # hidden resolution
         if h == "hidden":
             candidates = [hash_ for hash_, ver in inv_resolver.items() if ver == v]
 
@@ -182,22 +214,22 @@ for platform, url in DEPLOY_HISTORY_URLS.items():
 
             limit = get_slot_limit(bt)
             for hash_ in candidates:
-                key = (bt, v, hash_)
-                used = usage.get(key, 0)
+                key_u = (bt, v, hash_)
+                used = usage.get(key_u, 0)
                 if used < limit:
                     line = line.replace("version-hidden", hash_)
-                    usage[key] = used + 1
+                    usage[key_u] = used + 1
                     break
 
         output_lines.append(line.rstrip("\n"))
 
-    # write DeployHistory.txt
     path_txt = os.path.join(
         PATHS["mac"] if platform == "Mac" else BASE_DIR, "DeployHistory.txt"
     )
 
     with open(path_txt, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(output_lines))
+
 
 # --- Build normal data ---
 data = {}
@@ -206,6 +238,7 @@ for platform, binaries in inverted_data.items():
     for bt, hashes in binaries.items():
         for h, v in hashes.items():
             data.setdefault(platform, {}).setdefault(bt, {})[v] = h
+
 
 # --- Write NORMAL JSON ---
 for platform, binaries in data.items():
@@ -221,6 +254,7 @@ for platform, binaries in data.items():
             json.dump(
                 sorted_versions, f, indent=2, separators=(",", ": "), ensure_ascii=False
             )
+
 
 # --- Write INVERTED JSON ---
 for platform, binaries in inverted_data.items():
