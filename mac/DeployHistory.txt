@@ -5028,6 +5028,6 @@ New Client version-hidden at 4/28/2026 9:54:49 AM, file version: 0,719,0,7191338
 
 New Studio version-hidden at 4/28/2026 9:56:22 AM, file version: 0, 719, 0, 7191338, git hash: 0.719.0.7191338 ...Done!
 
-New Client version-hidden at 4/28/2026 11:58:17 AM, file version: 0,719,0,7191339, git hash: 0.719.0.7191339 ...Done!
+New Client version-1d604bb8b63849b4 at 4/28/2026 11:58:17 AM, file version: 0,719,0,7191339, git hash: 0.719.0.7191339 ...Done!
 
-New Studio version-hidden at 4/28/2026 11:59:56 AM, file version: 0, 719, 0, 7191339, git hash: 0.719.0.7191339 ...Done!
+New Studio version-23743d666dcf4735 at 4/28/2026 11:59:56 AM, file version: 0, 719, 0, 7191339, git hash: 0.719.0.7191339 ...Done!
