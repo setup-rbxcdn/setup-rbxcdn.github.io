@@ -17,6 +17,8 @@ DEPLOY_HISTORY_URLS = {
     "Mac": "https://setup.rbxcdn.com/mac/DeployHistory.txt",
 }
 
+GH_WINSTUDIO64_VERSION_URL = "https://raw.githubusercontent.com/Roblox/creator-docs/refs/heads/main/content/en-us/reference/engine/STUDIO_VERSION"
+
 # ClientSettings endpoints
 CLIENTSETTINGS_BASE = "https://clientsettingscdn.roblox.com/v2/client-version"
 
@@ -101,6 +103,27 @@ def get_bt_latest_major(inv_bt_dict):
     return max(get_major(v) for v in inv_bt_dict.values())
 
 
+def fetch_gh_winstudio64_version():
+    content = fetch(GH_WINSTUDIO64_VERSION_URL, as_text=True)
+    if not content:
+        return None, None
+
+    lines = content.strip().splitlines()
+    if len(lines) < 2:
+        return None, None
+
+    version_str = lines[0].strip()
+    hash_str = lines[1].strip()
+
+    if not hash_str.startswith("version-"):
+        return None, None
+
+    if not re.match(r"^\d+\.\d+\.\d+\.\d+$", version_str):
+        return None, None
+
+    return version_str, hash_str
+
+
 # --- PRELOAD ---
 for platform in DEPLOY_HISTORY_URLS.keys():
     inv_plat_data = inverted_data.setdefault(platform, {})
@@ -136,6 +159,16 @@ for platform in DEPLOY_HISTORY_URLS.keys():
                 for v, h in normal_versions.items():
                     inv_bt[h] = v
 
+s64_ver, s64_hash = fetch_gh_winstudio64_version()
+if s64_ver and s64_hash:
+    win_data = inverted_data.setdefault("Windows", {})
+    s64_dict = win_data.setdefault("Studio64", {})
+
+    s64_dict[s64_hash] = s64_ver
+    print(f"{s64_ver} {s64_hash} WindowsStudio64 Github")
+else:
+    print("Could not fetch WindowsStudio64 Github version.")
+
 
 # --- Resolver ---
 def get_resolver(platform, bt):
@@ -149,6 +182,7 @@ def get_resolver(platform, bt):
     global_latest = get_global_latest_major(platform)
     bt_latest = get_bt_latest_major(inv_bt_dict)
 
+    # If BT is very old, don't bother fetching client settings
     if bt_latest < (global_latest - RECENT_VERSION_WINDOW):
         resolver_cache[key] = inv_resolver
         return inv_resolver
