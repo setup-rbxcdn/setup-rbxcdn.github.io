@@ -2,7 +2,7 @@ import re, json, os, requests
 
 # --- CONFIG ---
 
-BASE_DIR = ""
+BASE_DIR = "."
 
 # Paths
 PATHS = {
@@ -56,7 +56,8 @@ def fetch(url, as_text=False):
     try:
         r = requests.get(url, timeout=10)
         return r.text if as_text else r.json()
-    except:
+    except Exception as e:
+        print(e)
         return None
 
 
@@ -70,7 +71,9 @@ def normalize_binary(bt, platform):
 
 def normalize_version(v):
     parts = [x.strip() for x in v.split(",") if x.strip()]
-    if parts and parts[0].isdigit() and int(parts[0]) > 2000:
+    if (
+        parts and parts[0].isdigit() and int(parts[0]) > 2000
+    ):  # * In ~25 years this might be a problem (this is here because of mac dh)
         parts[0] = "0"
     return ".".join(parts)
 
@@ -79,28 +82,28 @@ def version_key(v):
     return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
 
 
-def get_major(v):
+def get_version_minor(v):
     try:
         return int(v.split(".")[1])
     except:
         return 0
 
 
-def get_global_latest_major(platform):
+def get_global_latest_minor(platform):
     plat = inverted_data.get(platform, {})
-    majors = []
+    minors = []
 
     for bt_dict in plat.values():
         for v in bt_dict.values():
-            majors.append(get_major(v))
+            minors.append(get_version_minor(v))
 
-    return max(majors) if majors else 0
+    return max(minors) if minors else 0
 
 
-def get_bt_latest_major(inv_bt_dict):
+def get_bt_latest_minor(inv_bt_dict):
     if not inv_bt_dict:
         return 0
-    return max(get_major(v) for v in inv_bt_dict.values())
+    return max(get_version_minor(v) for v in inv_bt_dict.values())
 
 
 def fetch_gh_winstudio64_version():
@@ -114,12 +117,6 @@ def fetch_gh_winstudio64_version():
 
     version_str = lines[0].strip()
     hash_str = lines[1].strip()
-
-    if not hash_str.startswith("version-"):
-        return None, None
-
-    if not re.match(r"^\d+\.\d+\.\d+\.\d+$", version_str):
-        return None, None
 
     return version_str, hash_str
 
@@ -179,8 +176,8 @@ def get_resolver(platform, bt):
     inv_bt_dict = inverted_data.get(platform, {}).get(bt, {})
     inv_resolver = dict(inv_bt_dict)
 
-    global_latest = get_global_latest_major(platform)
-    bt_latest = get_bt_latest_major(inv_bt_dict)
+    global_latest = get_global_latest_minor(platform)
+    bt_latest = get_bt_latest_minor(inv_bt_dict)
 
     # If BT is very old, don't bother fetching client settings
     if bt_latest < (global_latest - RECENT_VERSION_WINDOW):
@@ -251,7 +248,7 @@ for platform, url in DEPLOY_HISTORY_URLS.items():
                 key_u = (bt, v, hash_)
                 used = usage.get(key_u, 0)
                 if used < limit:
-                    line = line.replace("version-hidden", hash_)
+                    line = line.replace("version-hidden", hash_, 1)
                     usage[key_u] = used + 1
                     break
 
