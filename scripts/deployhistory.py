@@ -196,10 +196,10 @@ s64_ver, s64_hash = fetch_gh_winstudio64_version()
 if s64_ver and s64_hash:
     win_data = inverted_data.setdefault("Windows", {})
     s64_dict = win_data.setdefault("Studio64", {})
+    print(f"{s64_ver} {s64_hash} WindowsStudio64 Github")
     if s64_hash not in s64_dict:
         s64_dict[s64_hash] = s64_ver
         record_hash_first_seen("Windows", "Studio64", s64_hash)
-        print(f"{s64_ver} {s64_hash} WindowsStudio64 Github")
 else:
     print("Could not fetch WindowsStudio64 Github version.")
 
