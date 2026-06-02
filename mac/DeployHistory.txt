@@ -5084,6 +5084,6 @@ New Client version-789d64d8ac264b79 at 5/26/2026 5:39:29 PM, file version: 0,723
 
 New Studio version-8d298fd2a15f45c1 at 5/26/2026 6:07:57 PM, file version: 0, 723, 0, 7230785, git hash: 0.723.0.7230785 ...Done!
 
-New Studio version-hidden at 6/2/2026 9:22:23 AM, file version: 0, 724, 0, 7240735, git hash: 0.724.0.7240735 ...Done!
+New Studio version-97186935c1e748ce at 6/2/2026 9:22:23 AM, file version: 0, 724, 0, 7240735, git hash: 0.724.0.7240735 ...Done!
 
-New Client version-hidden at 6/2/2026 9:49:03 AM, file version: 0,724,0,7240735, git hash: 0.724.0.7240735 ...Done!
+New Client version-b6bc8a3f6c184e6f at 6/2/2026 9:49:03 AM, file version: 0,724,0,7240735, git hash: 0.724.0.7240735 ...Done!
