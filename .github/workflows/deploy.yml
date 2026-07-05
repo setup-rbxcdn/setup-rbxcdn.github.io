@@ -1,22 +1,25 @@
 name: "Re-deploy DeployHistory"
-
 on:
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch: {}
-
 permissions:
   contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # Checkout main, generate files
       - uses: actions/checkout@v6
         with:
           ref: main
+
+      - name: Snapshot old metadata
+        run: |
+          if [ -f hash-metadata.json ]; then
+            cp hash-metadata.json /tmp/hash-metadata.old.json
+          else
+            echo '{}' > /tmp/hash-metadata.old.json
+          fi
 
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
@@ -30,3 +33,24 @@ jobs:
             git commit -m "Update version history"
             git push
           )
+
+      - name: Dispatch new WindowsStudio64 hashes
+        run: |
+          OLD_HASHES=$(jq -r '.Windows.Studio64 // {} | keys[]' /tmp/hash-metadata.old.json 2>/dev/null || true)
+          NEW_HASHES=$(jq -r '.Windows.Studio64 // {} | keys[]' hash-metadata.json 2>/dev/null || true)
+
+          DIFF=$(comm -13 <(echo "$OLD_HASHES" | sort) <(echo "$NEW_HASHES" | sort))
+
+          if [ -z "$DIFF" ]; then
+            echo "No new WindowsStudio64 hashes discovered this run."
+            exit 0
+          fi
+
+          for HASH in $DIFF; do
+            echo "Dispatching new_version for $HASH"
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.DISPATCH_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              https://api.github.com/repos/setup-rbxcdn/roblox-full-api-dumps/dispatches \
+              -d '{"event_type":"new_version","client_payload":{"version":"'"$HASH"'"}}'
+          done
