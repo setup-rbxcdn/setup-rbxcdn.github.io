@@ -52,6 +52,12 @@ WEAO_PLATFORM_MAP = {
     "Mac": ("Mac", "Client"),
 }
 
+# MaximumADHD/Roblox-Client-Tracker version-history.json: { "version": "hash", ... }
+# This tracker is Windows Studio64 version -> hash.
+MADHD_VERSION_HISTORY_URL = "https://raw.githubusercontent.com/MaximumADHD/Roblox-Client-Tracker/refs/heads/roblox/version-history.json"
+MADHD_PLATFORM = "Windows"
+MADHD_BT = "Studio64"
+
 HEADERS = {"User-Agent": "WEAO-3PService"}
 
 
@@ -88,6 +94,26 @@ def fetch_weao():
             if full_h not in d:
                 d[full_h] = v
                 record_hash(platform, bt, full_h, ts)
+
+
+def fetch_madhd_version_history():
+    js = fetch(MADHD_VERSION_HISTORY_URL)
+    if not js:
+        print("Could not fetch MaximumADHD version-history.json")
+        return
+
+    d = inverted_data.setdefault(MADHD_PLATFORM, {}).setdefault(MADHD_BT, {})
+
+    for v, h in js.items():
+        if not v or not h:
+            continue
+        full_h = h if h.startswith("version-") else "version-" + h
+        if full_h not in d:
+            print(
+                f"{v} {full_h} {normalize_binary(MADHD_BT, MADHD_PLATFORM)} MaximumADHD"
+            )
+            d[full_h] = v
+            record_hash(MADHD_PLATFORM, MADHD_BT, full_h)
 
 
 def ensure_dirs():
@@ -254,6 +280,9 @@ else:
 
 # WEAO Hash
 fetch_weao()
+
+# MaximumADHD version-history.json reconciliation
+fetch_madhd_version_history()
 
 # --- MAIN PROCESSING ---
 for platform, url in DEPLOY_HISTORY_URLS.items():
