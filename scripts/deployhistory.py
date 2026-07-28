@@ -90,8 +90,10 @@ def fetch_weao():
 
             full_h = h if h.startswith("version-") else "version-" + h
             d = inverted_data.setdefault(platform, {}).setdefault(bt, {})
-            print(f"{v} {full_h} {normalize_binary(bt,platform)} WEAO/{label}")
-            if full_h not in d:
+            is_new = full_h not in d
+            prefix = "NEW " if is_new else ""
+            print(f"{prefix}{v} {full_h} {normalize_binary(bt,platform)} WEAO/{label}")
+            if is_new:
                 d[full_h] = v
                 record_hash(platform, bt, full_h, ts)
 
@@ -110,7 +112,7 @@ def fetch_madhd_version_history():
         full_h = h if h.startswith("version-") else "version-" + h
         if full_h not in d:
             print(
-                f"{v} {full_h} {normalize_binary(MADHD_BT, MADHD_PLATFORM)} MaximumADHD"
+                f"NEW {v} {full_h} {normalize_binary(MADHD_BT, MADHD_PLATFORM)} MaximumADHD"
             )
             d[full_h] = v
             record_hash(MADHD_PLATFORM, MADHD_BT, full_h)
@@ -220,16 +222,20 @@ def get_resolver(platform, bt):
         lookup = normalize_binary(bt, platform)
         for suffix in CLIENT_CHANNELS:
             js = fetch(f"{CLIENTSETTINGS_BASE}/{lookup}{suffix}")
-            print(js, lookup, suffix)
             if not js:
+                print(js, lookup, suffix)
                 continue
             v, h = js.get("version"), js.get("clientVersionUpload")
+            is_new = False
             if v and h:
                 full_h = h if h.startswith("version-") else "version-" + h
                 if full_h not in res:
+                    is_new = True
                     res[full_h] = v
                     inv_bt_dict[full_h] = v
                     record_hash(platform, bt, full_h)
+            prefix = "NEW " if is_new else ""
+            print(f"{prefix}{js}", lookup, suffix)
 
     resolver_cache[key] = res
     return res
@@ -269,8 +275,10 @@ if content:
     if len(lines) >= 2:
         s64_ver, s64_hash = lines[0].strip(), lines[1].strip()
         d = inverted_data.setdefault("Windows", {}).setdefault("Studio64", {})
-        print(f"{s64_ver} {s64_hash} WindowsStudio64 Github")
-        if s64_hash not in d:
+        is_new = s64_hash not in d
+        prefix = "NEW " if is_new else ""
+        print(f"{prefix}{s64_ver} {s64_hash} WindowsStudio64 Github")
+        if is_new:
             d[s64_hash] = s64_ver
             record_hash("Windows", "Studio64", s64_hash)
     else:
