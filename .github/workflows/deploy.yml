@@ -13,12 +13,13 @@ jobs:
         with:
           ref: main
 
-      - name: Snapshot old metadata
+      - name: Snapshot old WindowsStudio64 version history
         run: |
-          if [ -f hash-metadata.json ]; then
-            cp hash-metadata.json /tmp/hash-metadata.old.json
+          FILE="version-history-inverted/Windows/Studio64.json"
+          if [ -f "$FILE" ]; then
+            cp "$FILE" /tmp/Studio64.old.json
           else
-            echo '{}' > /tmp/hash-metadata.old.json
+            echo '{}' > /tmp/Studio64.old.json
           fi
 
       - name: Run DeployHistory Parser
@@ -34,15 +35,17 @@ jobs:
             git push
           )
 
-      - name: Dispatch new WindowsStudio64 hashes
+      - name: Dispatch new WindowsStudio64 versions
         run: |
-          OLD_HASHES=$(jq -r '.Windows.Studio64 // {} | keys[]' /tmp/hash-metadata.old.json 2>/dev/null || true)
-          NEW_HASHES=$(jq -r '.Windows.Studio64 // {} | keys[]' hash-metadata.json 2>/dev/null || true)
+          FILE="version-history-inverted/Windows/Studio64.json"
+
+          OLD_HASHES=$(jq -r 'keys[]' /tmp/Studio64.old.json 2>/dev/null || true)
+          NEW_HASHES=$(jq -r 'keys[]' "$FILE" 2>/dev/null || true)
 
           DIFF=$(comm -13 <(echo "$OLD_HASHES" | sort) <(echo "$NEW_HASHES" | sort))
 
           if [ -z "$DIFF" ]; then
-            echo "No new WindowsStudio64 hashes discovered this run."
+            echo "No new WindowsStudio64 versions discovered this run."
             exit 0
           fi
 
