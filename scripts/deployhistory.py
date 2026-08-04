@@ -24,7 +24,7 @@ CLIENT_CHANNELS = [
 ]
 
 DEPLOY_PATTERN = re.compile(
-    r"New (\w+) (version-[a-f0-9]{32}|version-hidden) at ([\d/]+ [\d:]+ [AP]M),.*?file ver(?:s)?ion:\s*([0-9,\s]+)",
+    r"New (\w+) (version-[a-f0-9]{16}|version-hidden) at ([\d/]+ [\d:]+ [AP]M),.*?file ver(?:s)?ion:\s*([0-9,\s]+)",
     re.I,
 )
 RECENT_VERSION_WINDOW = 10
@@ -70,54 +70,6 @@ def fetch(url, as_text=False):
         return None
 
 
-def fetch_weao():
-    for label, url in WEAO_URLS.items():
-        js = fetch(url)
-        if not js:
-            print(f"Could not fetch WEAO {label}")
-            continue
-
-        for weao_key, (platform, bt) in WEAO_PLATFORM_MAP.items():
-            h = js.get(weao_key)
-            resp = js.get(f"{weao_key}Response")
-            if not h or not resp:
-                continue
-
-            v = resp.get("version")
-            ts = resp.get("timestamp")
-            if not v:
-                continue
-
-            full_h = h if h.startswith("version-") else "version-" + h
-            d = inverted_data.setdefault(platform, {}).setdefault(bt, {})
-            is_new = full_h not in d
-            prefix = "NEW " if is_new else ""
-            print(f"{prefix}{v} {full_h} {normalize_binary(bt,platform)} WEAO/{label}")
-            if is_new:
-                d[full_h] = v
-                record_hash(platform, bt, full_h, ts)
-
-
-def fetch_madhd_version_history():
-    js = fetch(MADHD_VERSION_HISTORY_URL)
-    if not js:
-        print("Could not fetch MaximumADHD version-history.json")
-        return
-
-    d = inverted_data.setdefault(MADHD_PLATFORM, {}).setdefault(MADHD_BT, {})
-
-    for v, h in js.items():
-        if not v or not h:
-            continue
-        full_h = h if h.startswith("version-") else "version-" + h
-        if full_h not in d:
-            print(
-                f"NEW {v} {full_h} {normalize_binary(MADHD_BT, MADHD_PLATFORM)} MaximumADHD"
-            )
-            d[full_h] = v
-            record_hash(MADHD_PLATFORM, MADHD_BT, full_h)
-
-
 def ensure_dirs():
     for p in list(PATHS.values()) + [os.path.dirname(PATH_METADATA)]:
         if p:
@@ -138,6 +90,15 @@ def normalize_version(v):
     if parts and parts[0].isdigit() and int(parts[0]) > 2000:
         parts[0] = "0"
     return ".".join(parts)
+
+
+def normalize_hash(h):
+    if not h:
+        return None
+    full = h if h.startswith("version-") else "version-" + h
+    if not re.fullmatch(r"version-[a-f0-9]{16}", full):
+        return None
+    return full
 
 
 def version_key(v):
@@ -177,9 +138,6 @@ def save_metadata():
 
 
 def record_hash(platform, bt, h, timestamp=None):
-    if not re.fullmatch(r"version-[a-f0-9]{32}", h):
-        return
-
     bucket = hash_metadata.setdefault(platform, {}).setdefault(bt, {})
     if h not in bucket:
         if timestamp is not None:
@@ -231,8 +189,8 @@ def get_resolver(platform, bt):
             v, h = js.get("version"), js.get("clientVersionUpload")
             is_new = False
             if v and h:
-                full_h = h if h.startswith("version-") else "version-" + h
-                if full_h not in res:
+                full_h = normalize_hash(h)
+                if full_h and full_h not in res:
                     is_new = True
                     res[full_h] = v
                     inv_bt_dict[full_h] = v
@@ -245,12 +203,67 @@ def get_resolver(platform, bt):
 
 
 def group_candidates_by_version(resolver):
-    """Precompute version -> [hash, ...] once per resolver instead of
-    re-scanning the whole resolver dict for every hidden-group entry."""
     grouped = {}
     for h, v in resolver.items():
         grouped.setdefault(v, []).append(h)
     return grouped
+
+
+def fetch_weao():
+    for label, url in WEAO_URLS.items():
+        js = fetch(url)
+        if not js:
+            print(f"Could not fetch WEAO {label}")
+            continue
+
+        for weao_key, (platform, bt) in WEAO_PLATFORM_MAP.items():
+            h = js.get(weao_key)
+            resp = js.get(f"{weao_key}Response")
+            if not h or not resp:
+                continue
+
+            v = resp.get("version")
+            ts = resp.get("timestamp")
+            if not v:
+                continue
+
+            full_h = normalize_hash(h)
+            d = inverted_data.setdefault(platform, {}).setdefault(bt, {})
+            hash_str = full_h if full_h else "version-hidden"
+            is_new = full_h and full_h not in d
+            prefix = "NEW " if is_new else ""
+
+            print(
+                f"{prefix}{v} {hash_str} {normalize_binary(bt,platform)} WEAO/{label}"
+            )
+
+            if is_new:
+                d[full_h] = v
+                record_hash(platform, bt, full_h, ts)
+
+
+def fetch_madhd_version_history():
+    js = fetch(MADHD_VERSION_HISTORY_URL)
+    if not js:
+        print("Could not fetch MaximumADHD version-history.json")
+        return
+
+    d = inverted_data.setdefault(MADHD_PLATFORM, {}).setdefault(MADHD_BT, {})
+
+    for v, h in js.items():
+        if not v or not h:
+            continue
+
+        full_h = normalize_hash(h)
+        if not full_h:
+            continue
+
+        if full_h not in d:
+            print(
+                f"NEW {v} {full_h} {normalize_binary(MADHD_BT, MADHD_PLATFORM)} MaximumADHD"
+            )
+            d[full_h] = v
+            record_hash(MADHD_PLATFORM, MADHD_BT, full_h)
 
 
 # --- INIT ---
@@ -277,13 +290,17 @@ if content:
     lines = content.strip().splitlines()
     if len(lines) >= 2:
         s64_ver, s64_hash = lines[0].strip(), lines[1].strip()
-        d = inverted_data.setdefault("Windows", {}).setdefault("Studio64", {})
-        is_new = s64_hash not in d
-        prefix = "NEW " if is_new else ""
-        print(f"{prefix}{s64_ver} {s64_hash} WindowsStudio64 Github")
-        if is_new:
-            d[s64_hash] = s64_ver
-            record_hash("Windows", "Studio64", s64_hash)
+        full_h = normalize_hash(s64_hash)
+        if full_h:
+            d = inverted_data.setdefault("Windows", {}).setdefault("Studio64", {})
+            is_new = full_h not in d
+            prefix = "NEW " if is_new else ""
+            print(f"{prefix}{s64_ver} {full_h} WindowsStudio64 Github")
+            if is_new:
+                d[full_h] = s64_ver
+                record_hash("Windows", "Studio64", full_h)
+        else:
+            print(f"Invalid hash from Github: {s64_hash}")
     else:
         print("Could not parse Github version file.")
 else:
