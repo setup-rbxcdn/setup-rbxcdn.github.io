@@ -1,7 +1,7 @@
 import re
 import requests
 
-INCLUDE_STUDIO = False  # set True to include binaries with "studio" in the name
+INCLUDE_STUDIO = True  # set True to include binaries with "studio" in the name
 
 URLS = {
     "Windows": "https://setup-rbxcdn.github.io/DeployHistory.txt",
@@ -38,6 +38,8 @@ def main():
         if not text:
             continue
 
+        print(platform)
+
         for line in text.splitlines():
             m = HIDDEN_PATTERN.search(line)
             if not m:
@@ -55,7 +57,7 @@ def main():
                 continue
             seen.add(key)
 
-            print(f"{bt} version-hidden {file_ver}")
+            print(f"  {bt} version-hidden {file_ver}")
 
 
 if __name__ == "__main__":
