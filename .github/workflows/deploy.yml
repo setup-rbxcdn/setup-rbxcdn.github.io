@@ -26,6 +26,7 @@ jobs:
         run: python scripts/deployhistory.py
 
       - name: Commit changes
+        id: commit
         run: |
           git config user.email "bot@local"
           git config user.name "bot"
@@ -33,9 +34,17 @@ jobs:
           git diff --cached --quiet || (
             git commit -m "Update version history" -m "Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             git push
+            echo "new_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           )
 
+      - name: Tag commit with run ID
+        if: steps.commit.outputs.new_sha != ''
+        run: |
+          git tag -f "run-${{ github.run_id }}" ${{ steps.commit.outputs.new_sha }}
+          git push -f origin "run-${{ github.run_id }}"
+
       - name: Dispatch new WindowsStudio64 versions
+        if: steps.commit.outputs.new_sha != ''
         run: |
           FILE="version-history-inverted/Windows/Studio64.json"
 
