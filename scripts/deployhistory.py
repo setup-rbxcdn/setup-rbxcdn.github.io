@@ -24,7 +24,7 @@ CLIENT_CHANNELS = [
 ]
 
 DEPLOY_PATTERN = re.compile(
-    r"New (\w+) (version-[a-f0-9]+|version-hidden) at ([\d/]+ [\d:]+ [AP]M),.*?file ver(?:s)?ion:\s*([0-9,\s]+)",
+    r"New (\w+) (version-[a-f0-9]{32}|version-hidden) at ([\d/]+ [\d:]+ [AP]M),.*?file ver(?:s)?ion:\s*([0-9,\s]+)",
     re.I,
 )
 RECENT_VERSION_WINDOW = 10
@@ -177,6 +177,9 @@ def save_metadata():
 
 
 def record_hash(platform, bt, h, timestamp=None):
+    if not re.fullmatch(r"version-[a-f0-9]{32}", h):
+        return
+
     bucket = hash_metadata.setdefault(platform, {}).setdefault(bt, {})
     if h not in bucket:
         if timestamp is not None:
