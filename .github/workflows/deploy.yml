@@ -41,11 +41,11 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
-            https://api.github.com/repos/setup-rbxcdn/roblox-full-api-dumps/dispatches \
+            https://api.github.com/repos/setup-rbxcdn/roblox-full-api-dumps/actions/workflows/reflection-service.yml/dispatches \
             -d "$(jq -nc \
               --arg version "$HASH" \
               --arg engine_version "$ENGINE_VERSION" \
-              '{event_type:"live_version",client_payload:{version:$version,engine_version:$engine_version}}')"
+              '{ref:"main",inputs:{version:$version,engine_version:$engine_version}}')"
 
       - name: Commit changes
         run: |
