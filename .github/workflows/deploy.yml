@@ -27,14 +27,21 @@ jobs:
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
 
-      - name: Dispatch current LIVE version for ReflectionService dump
+      - name: Dispatch current zbeta version for ReflectionService dump
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
         run: |
-          LIVE=$(curl --fail --silent --show-error \
-            https://clientsettingscdn.roblox.com/v2/client-version/WindowsStudio64/channel/LIVE)
-          HASH=$(echo "$LIVE" | jq -r '.clientVersionUpload')
-          ENGINE_VERSION=$(echo "$LIVE" | jq -r '.version')
+          if ! ZBETA=$(curl --fail --silent --show-error \
+            https://clientsettingscdn.roblox.com/v2/client-version/WindowsStudio64/channel/zbeta); then
+            echo "zbeta is offline; skipping ReflectionService dispatch."
+            exit 0
+          fi
+
+          if ! HASH=$(echo "$ZBETA" | jq -er '.clientVersionUpload | select(type == "string" and length > 0)') || \
+             ! ENGINE_VERSION=$(echo "$ZBETA" | jq -er '.version | select(type == "string" and length > 0)'); then
+            echo "zbeta returned no usable version; skipping ReflectionService dispatch."
+            exit 0
+          fi
 
           curl --fail-with-body -L \
             -X POST \
