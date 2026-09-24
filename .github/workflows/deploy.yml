@@ -27,32 +27,58 @@ jobs:
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
 
-      - name: Dispatch current zbeta version for ReflectionService dump
+      - name: Dispatch missing LIVE/zbeta versions for ReflectionService dump
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
         run: |
-          if ! ZBETA=$(curl --fail --silent --show-error \
-            https://clientsettingscdn.roblox.com/v2/client-version/WindowsStudio64/channel/zbeta); then
-            echo "zbeta is offline; skipping ReflectionService dispatch."
+          DUMP_BASE="https://raw.githubusercontent.com/setup-rbxcdn/roblox-full-api-dumps/main/reflectionservice-dumps"
+          CANDIDATES="[]"
+
+          # The Open Cloud engine behind the Luau task can sit on the zbeta build
+          # instead of LIVE, so hand both channels to the dump workflow and let its
+          # own version() decide which candidate is the one worth dumping.
+          for CHANNEL in "" "/channel/zbeta"; do
+            LABEL="${CHANNEL:-live}"
+
+            if ! RESP=$(curl --fail --silent --show-error \
+              "https://clientsettingscdn.roblox.com/v2/client-version/WindowsStudio64${CHANNEL}"); then
+              echo "${LABEL} is offline; skipping."
+              continue
+            fi
+
+            if ! HASH=$(echo "$RESP" | jq -er '.clientVersionUpload | select(type == "string" and length > 0)') || \
+               ! ENGINE_VERSION=$(echo "$RESP" | jq -er '.version | select(type == "string" and length > 0)'); then
+              echo "${LABEL} returned no usable version; skipping."
+              continue
+            fi
+
+            # A HEAD against the raw CDN costs no API quota, unlike a dispatch.
+            if curl --fail --silent --show-error --head --location \
+              "${DUMP_BASE}/${HASH}-ReflectionService-Dump.json" > /dev/null; then
+              echo "${LABEL} ${HASH} (${ENGINE_VERSION}) already has a dump; skipping."
+              continue
+            fi
+
+            echo "${LABEL} ${HASH} (${ENGINE_VERSION}) is missing its dump; queueing."
+            CANDIDATES=$(echo "$CANDIDATES" | jq -c \
+              --arg version "$HASH" \
+              --arg engine_version "$ENGINE_VERSION" \
+              '. + [{version: $version, engine_version: $engine_version}]')
+          done
+
+          if [ "$(echo "$CANDIDATES" | jq 'length')" -eq 0 ]; then
+            echo "No ReflectionService dump is missing; no dispatch sent."
             exit 0
           fi
 
-          if ! HASH=$(echo "$ZBETA" | jq -er '.clientVersionUpload | select(type == "string" and length > 0)') || \
-             ! ENGINE_VERSION=$(echo "$ZBETA" | jq -er '.version | select(type == "string" and length > 0)'); then
-            echo "zbeta returned no usable version; skipping ReflectionService dispatch."
-            exit 0
-          fi
-
+          echo "Dispatching one reflection-service run for $(echo "$CANDIDATES" | jq -c 'map(.version)')"
           curl --fail-with-body -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
             https://api.github.com/repos/setup-rbxcdn/roblox-full-api-dumps/actions/workflows/reflection-service.yml/dispatches \
-            -d "$(jq -nc \
-              --arg version "$HASH" \
-              --arg engine_version "$ENGINE_VERSION" \
-              '{ref:"main",inputs:{version:$version,engine_version:$engine_version}}')"
+            -d "$(jq -nc --arg versions "$CANDIDATES" '{ref:"main",inputs:{versions:$versions}}')"
 
       - name: Commit changes
         run: |
