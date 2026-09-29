@@ -41,10 +41,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
         run: |
-          # Nothing external reports what the Open Cloud engine actually runs, so
-          # dispatch unconditionally; the dump workflow probes version() with a
-          # cheap Luau task and only builds a ReflectionService dump when the
-          # engine moved to a version we have not dumped yet.
+          # Nothing external reports what the Open Cloud engine actually runs,
+          # so dispatch unconditionally; the dump workflow decides on its own
+          # what is missing and exits without writing if nothing is.
           echo "Dispatching reflection-service dump check"
           curl --fail-with-body -L \
             -X POST \
