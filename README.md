@@ -11,6 +11,17 @@ This project fetches and processes Roblox **DeployHistory.txt** files for Window
 
 > **Note:** The published URLs are a direct mapping of the fetched DeployHistory files.
 
+## Clientsettings-only binaries
+
+`WebClientApp` has no `DeployHistory.txt`, so it is polled directly from
+`https://clientsettingscdn.roblox.com/v2/client-version/WebClientApp` (default,
+`zbeta` and `zliveforbeta` channels, like every other binary) and only
+contributes JSON histories and hash metadata:
+
+* `version-history/Web/WebClientApp.json`
+* `version-history-inverted/Web/WebClientApp.json`
+* `hash-metadata.json` -> `Web` -> `WebClientApp`
+
 ## Features
 
 * **Hidden hash resolution**:

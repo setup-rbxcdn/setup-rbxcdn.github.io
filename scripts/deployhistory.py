@@ -23,6 +23,16 @@ CLIENT_CHANNELS = [
     "/channel/zliveforbeta",
 ]
 
+# Binaries that only exist behind the clientsettings API. They have no
+# DeployHistory.txt, so they never produce a history file and only feed the
+# JSON histories and hash-metadata.json.
+CLIENTSETTINGS_ONLY_BINARIES = [
+    ("Web", "WebClientApp"),
+]
+
+# Platforms that own a DeployHistory.txt plus the clientsettings-only ones.
+PLATFORMS = list(DEPLOY_HISTORY_URLS) + [p for p, _ in CLIENTSETTINGS_ONLY_BINARIES]
+
 DEPLOY_PATTERN = re.compile(
     r"New (\w+) (version-[a-f0-9]{16}|version-hidden) at ([\d/]+ [\d:]+ [AP]M),.*?file ver(?:s)?ion:\s*([0-9,\s]+)",
     re.I,
@@ -266,12 +276,35 @@ def fetch_madhd_version_history():
             record_hash(MADHD_PLATFORM, MADHD_BT, full_h)
 
 
+def fetch_clientsettings_only():
+    for platform, bt in CLIENTSETTINGS_ONLY_BINARIES:
+        lookup = normalize_binary(bt, platform)
+        d = inverted_data.setdefault(platform, {}).setdefault(bt, {})
+
+        for suffix in CLIENT_CHANNELS:
+            js = fetch(f"{CLIENTSETTINGS_BASE}/{lookup}{suffix}")
+            if not js:
+                print(js, lookup, suffix)
+                continue
+
+            v, h = js.get("version"), js.get("clientVersionUpload")
+            is_new = False
+            if v and h:
+                full_h = normalize_hash(h)
+                if full_h and full_h not in d:
+                    is_new = True
+                    d[full_h] = v
+                    record_hash(platform, bt, full_h)
+            prefix = "NEW " if is_new else ""
+            print(f"{prefix}{js}", lookup, suffix)
+
+
 # --- INIT ---
 ensure_dirs()
 load_metadata()
 
 # Preload Inverted JSONs
-for plat in DEPLOY_HISTORY_URLS:
+for plat in PLATFORMS:
     inv_dir = os.path.join(PATHS["inverted"], plat)
     if os.path.exists(inv_dir):
         for f in os.listdir(inv_dir):
@@ -311,6 +344,9 @@ fetch_weao()
 
 # MaximumADHD version-history.json reconciliation
 fetch_madhd_version_history()
+
+# Clientsettings-only binaries (no DeployHistory.txt, JSON + metadata only)
+fetch_clientsettings_only()
 
 # --- MAIN PROCESSING ---
 for platform, url in DEPLOY_HISTORY_URLS.items():
