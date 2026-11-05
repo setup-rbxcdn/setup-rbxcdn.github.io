@@ -1,6 +1,6 @@
 # Roblox DeployHistory Mapper & Archiver
 
-This project fetches and processes Roblox **DeployHistory.txt** files for Windows and Mac platforms, resolves hidden version hashes using the clientsettings API & Archives of it, and writes both normal and inverted JSON histories.
+This project fetches and processes Roblox **DeployHistory.txt** files for the Windows and Mac platforms, resolves hidden version hashes using the clientsettings API & Archives of it, and writes both normal and inverted JSON histories. Binaries that have no DeployHistory (currently `WebClientApp`) are tracked straight from the clientsettings API into the same JSON layout, plus `hash-metadata.json`.
 
 ## Mappings
 
@@ -41,40 +41,52 @@ contributes JSON histories and hash metadata:
   * Normal: `version -> hash`
   * Inverted: `hash -> version` (ordered by version, allows duplicates)
 
+* **Hash metadata**:
+  `hash-metadata.json` records when each hash was first seen (`platform -> binary -> hash -> UTC timestamp`) and feeds hidden-hash timestamp matching.
+
+* **Clientsettings-only tracking**:
+  Binaries without a DeployHistory are polled through the same channel list and written only to the JSON histories and `hash-metadata.json`.
+
 ## Directory Structure
 
 ```
 project-root/
 ├─ version-history-inverted/   # Inverted JSON outputs
 │  ├─ Windows/
-│  └─ Mac/
+│  ├─ Mac/
+│  └─ Web/
 ├─ version-history/   # JSON outputs
 │  ├─ Windows/
-│  └─ Mac/
-├─ mac/DeployHistory.txt       # Latest DeployHistory.txt for Mac
-├─ DeployHistory.txt           # Latest DeployHistory.txt for Windows
-└─ scripts/deployhistory.py    # Main script
+│  ├─ Mac/
+│  └─ Web/
+├─ hash-metadata.json           # First-seen timestamps per hash
+├─ mac/DeployHistory.txt        # Latest DeployHistory.txt for Mac
+├─ DeployHistory.txt            # Latest DeployHistory.txt for Windows
+└─ scripts/deployhistory.py     # Main script
 ```
 
 > **Tip:** Prefer using `version-history-inverted` over `version-history` to retain all discovered hashes for a given version.
 
 ## Usage
 
-1. Run the deployhistory:
+1. Run the deployhistory script:
 
 ```bash
-python deployhistory.py
+python scripts/deployhistory.py
 ```
 
 2. Outputs:
 
 * `DeployHistory.txt` for Windows/Mac
-* `version-history` JSON files (version -> hash)
+* `version-history` JSON files (version -> hash), including the clientsettings-only `Web/WebClientApp.json`
 * `version-history-inverted` JSON files (hash -> version)
+* `hash-metadata.json` (first-seen timestamps per hash)
 
 ## Notes
 
 * The script automatically creates missing directories.
 * Hidden hashes from `DeployHistory.txt` or clientsettings API will always be included in the inverted JSON.
+* `WebClientApp` has no DeployHistory and therefore no history file; it only appears in the JSON histories and `hash-metadata.json`.
+* Timestamps in `hash-metadata.json` are UTC.
 * Normal JSON (`version -> hash`) may overwrite duplicates, so **use inverted JSON** if duplicates matter.
 
