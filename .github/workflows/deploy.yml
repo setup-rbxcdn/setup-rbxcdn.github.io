@@ -24,6 +24,15 @@ jobs:
             echo '{}' > /tmp/Studio64.old.json
           fi
 
+      - name: Snapshot old WebClientApp version history
+        run: |
+          FILE="version-history-inverted/Web/WebClientApp.json"
+          if [ -f "$FILE" ]; then
+            cp "$FILE" /tmp/WebClientApp.old.json
+          else
+            echo '{}' > /tmp/WebClientApp.old.json
+          fi
+
       - name: Run DeployHistory Parser
         run: python scripts/deployhistory.py
 
@@ -52,6 +61,31 @@ jobs:
             -H "X-GitHub-Api-Version: 2026-03-10" \
             https://api.github.com/repos/setup-rbxcdn/roblox-full-api-dumps/actions/workflows/reflection-service.yml/dispatches \
             -d '{"ref":"main"}'
+
+      - name: Dispatch new WebClientApp versions
+        run: |
+          FILE="version-history-inverted/Web/WebClientApp.json"
+
+          OLD_HASHES=$(jq -r 'keys[]' /tmp/WebClientApp.old.json 2>/dev/null || true)
+          NEW_HASHES=$(jq -r 'keys[]' "$FILE" 2>/dev/null || true)
+
+          DIFF=$(comm -13 <(echo "$OLD_HASHES" | sort) <(echo "$NEW_HASHES" | sort))
+
+          if [ -z "$DIFF" ]; then
+            echo "No new WebClientApp versions discovered this run."
+            exit 0
+          fi
+
+          for HASH in $DIFF; do
+            echo "Dispatching for $HASH to webclient-archive"
+            curl --fail-with-body -L \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              https://api.github.com/repos/setup-rbxcdn/webclient-archive/actions/workflows/archive.yml/dispatches \
+              -d '{"ref":"main","inputs":{"version":"'"$HASH"'"}}'
+          done
 
       - name: Dispatch new WindowsStudio64 versions
         run: |
